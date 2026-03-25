@@ -18,6 +18,19 @@ type MetricsPayload struct {
 	Timestamp string  `json:"timestamp"`
 }
 
+type APIConfigResponse struct {
+	Config struct {
+		AgentID          string  `json:"agent_id"`
+		SamplingInterval int     `json:"sampling_interval"`
+		ThresholdCPU     int     `json:"threshold_cpu"`
+		ThresholdRAM     int     `json:"threshold_ram"`
+		ThresholdProcess int     `json:"threshold_process"`
+		DurationCPU      int     `json:"duration_cpu"`
+		DurationRAM      int     `json:"duration_ram"`
+		DurationProcess  int     `json:"duration_process"`
+	} `json:"config"`
+}
+
 type APIClient struct {
 	baseURL    string
 	serverKey  string
@@ -70,12 +83,31 @@ func (c *APIClient) FetchConfig() (*config.Config, error) {
 		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
 	}
 
-	var cfg config.Config
-	if err := json.NewDecoder(resp.Body).Decode(&cfg); err != nil {
+	var apiResp APIConfigResponse
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
 		return nil, fmt.Errorf("failed to decode config: %w", err)
 	}
 
-	return &cfg, nil
+	// Convert API response to agent config format
+	cfg := &config.Config{
+		SamplingInterval: apiResp.Config.SamplingInterval,
+		Alerts: config.AlertsConfig{
+			CPU: config.AlertConfig{
+				Threshold: apiResp.Config.ThresholdCPU,
+				Duration:  apiResp.Config.DurationCPU,
+			},
+			RAM: config.AlertConfig{
+				Threshold: apiResp.Config.ThresholdRAM,
+				Duration:  apiResp.Config.DurationRAM,
+			},
+			ProcessCPU: config.AlertConfig{
+				Threshold: apiResp.Config.ThresholdProcess,
+				Duration:  apiResp.Config.DurationProcess,
+			},
+		},
+	}
+
+	return cfg, nil
 }
 
 func (c *APIClient) post(endpoint string, payload interface{}) error {

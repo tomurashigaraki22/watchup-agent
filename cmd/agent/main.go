@@ -178,9 +178,68 @@ func main() {
 			return nil // Don't fail on config fetch errors
 		}
 
-		// Update configuration (simplified - in production, would need proper synchronization)
-		*cfg = *newCfg
-		fmt.Printf("[CONFIG] Configuration updated from API\n")
+		// Only update alert thresholds, preserve local settings
+		// (sampling_interval, server_key, project_id, etc. should not be changed by API)
+		oldSamplingInterval := cfg.SamplingInterval
+		oldServerKey := cfg.ServerKey
+		oldProjectID := cfg.ProjectID
+		oldServerIdentifier := cfg.ServerIdentifier
+		oldAPIEndpoint := cfg.APIEndpoint
+		oldRegistered := cfg.Registered
+
+		// Warn if API is trying to change sampling interval
+		if newCfg.SamplingInterval != 0 && newCfg.SamplingInterval != oldSamplingInterval {
+			fmt.Printf("[CONFIG] Warning: API returned sampling_interval=%ds, keeping local value=%ds\n",
+				newCfg.SamplingInterval, oldSamplingInterval)
+		}
+
+		// Update only the alerts configuration
+		cfg.Alerts = newCfg.Alerts
+
+		// Restore local settings
+		cfg.SamplingInterval = oldSamplingInterval
+		cfg.ServerKey = oldServerKey
+		cfg.ProjectID = oldProjectID
+		cfg.ServerIdentifier = oldServerIdentifier
+		cfg.APIEndpoint = oldAPIEndpoint
+		cfg.Registered = oldRegistered
+
+		// Calculate sample counts for logging
+		cpuSamples := cfg.Alerts.CPU.Duration / cfg.SamplingInterval
+		ramSamples := cfg.Alerts.RAM.Duration / cfg.SamplingInterval
+		processSamples := cfg.Alerts.ProcessCPU.Duration / cfg.SamplingInterval
+
+		fmt.Printf("[CONFIG] Alert thresholds updated:\n")
+		fmt.Printf("  CPU: %d%% for %ds (%d samples)\n", 
+			cfg.Alerts.CPU.Threshold, cfg.Alerts.CPU.Duration, cpuSamples)
+		fmt.Printf("  RAM: %d%% for %ds (%d samples)\n", 
+			cfg.Alerts.RAM.Threshold, cfg.Alerts.RAM.Duration, ramSamples)
+		fmt.Printf("  Process: %d%% for %ds (%d samples)\n",
+			cfg.Alerts.ProcessCPU.Threshold, cfg.Alerts.ProcessCPU.Duration, processSamples)
+
+		// Update spike detector with new thresholds
+		spikeDetector.UpdateThresholds(
+			float64(cfg.Alerts.CPU.Threshold),
+			float64(cfg.Alerts.RAM.Threshold),
+			float64(cfg.Alerts.ProcessCPU.Threshold),
+			time.Duration(cfg.Alerts.CPU.Duration)*time.Second,
+			time.Duration(cfg.Alerts.RAM.Duration)*time.Second,
+			time.Duration(cfg.Alerts.ProcessCPU.Duration)*time.Second,
+		)
+
+		// Immediately collect and check metrics after config update
+		cpuMetrics, _ := cpuCollector.Collect()
+		memMetrics, _ := memCollector.Collect()
+		topProcesses, _ := procCollector.CollectTopCPU(5)
+		
+		if cpuMetrics != nil && memMetrics != nil && topProcesses != nil {
+			spikeDetector.CheckCPU(cpuMetrics.UsagePercent, topProcesses)
+			spikeDetector.CheckRAM(memMetrics.UsedPercent, topProcesses)
+			spikeDetector.CheckProcessCPU(topProcesses)
+			fmt.Printf("[CONFIG] Resource check: CPU: %.1f%%, RAM: %.1f%%\n", 
+				cpuMetrics.UsagePercent, memMetrics.UsedPercent)
+		}
+
 		return nil
 	}
 

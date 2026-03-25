@@ -162,3 +162,26 @@ func (sd *SpikeDetector) GetStatus() string {
 		sd.processCPUState.lastValue, sd.processCPUState.violationCount, sd.processCPUConfig.RequiredSamples,
 	)
 }
+
+// UpdateThresholds updates the detector's threshold configuration dynamically
+func (sd *SpikeDetector) UpdateThresholds(
+	cpuThreshold, ramThreshold, processCPUThreshold float64,
+	cpuDuration, ramDuration, processCPUDuration time.Duration,
+) {
+	sd.cpuConfig.Threshold = cpuThreshold
+	sd.cpuConfig.Duration = cpuDuration
+	sd.cpuConfig.RequiredSamples = int(cpuDuration / sd.samplingInterval)
+	
+	sd.ramConfig.Threshold = ramThreshold
+	sd.ramConfig.Duration = ramDuration
+	sd.ramConfig.RequiredSamples = int(ramDuration / sd.samplingInterval)
+	
+	sd.processCPUConfig.Threshold = processCPUThreshold
+	sd.processCPUConfig.Duration = processCPUDuration
+	sd.processCPUConfig.RequiredSamples = int(processCPUDuration / sd.samplingInterval)
+	
+	// Reset violation counts when thresholds change
+	sd.cpuState.violationCount = 0
+	sd.ramState.violationCount = 0
+	sd.processCPUState.violationCount = 0
+}
