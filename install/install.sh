@@ -26,7 +26,7 @@ detect_os() {
         VERSION=$VERSION_ID
     elif [ -f /etc/redhat-release ]; then
         OS="rhel"
-    elif [ -f /etc/debian_version ]; thenn
+    elif [ -f /etc/debian_version ]; then
         OS="debian"
     else
         OS=$(uname -s)
