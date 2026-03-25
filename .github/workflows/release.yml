@@ -1,0 +1,58 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+    
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: '1.21'
+    
+    - name: Build binaries
+      run: |
+        # Linux AMD64
+        GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o watchup-agent-linux-amd64 cmd/agent/main.go
+        
+        # Linux ARM64
+        GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o watchup-agent-linux-arm64 cmd/agent/main.go
+        
+        # Create checksums
+        sha256sum watchup-agent-* > checksums.txt
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          watchup-agent-linux-amd64
+          watchup-agent-linux-arm64
+          checksums.txt
+          install/install.sh
+        body: |
+          ## Watchup Server Agent Release
+          
+          ### Installation
+          ```bash
+          curl -s https://watchup.site/install.sh | sudo bash
+          ```
+          
+          ### Manual Installation
+          1. Download the appropriate binary for your platform
+          2. Move to `/usr/local/bin/watchup-agent`
+          3. Make executable: `chmod +x /usr/local/bin/watchup-agent`
+          4. Follow setup instructions in README.md
+          
+          ### Changes
+          See [CHANGELOG.md](CHANGELOG.md) for details.
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

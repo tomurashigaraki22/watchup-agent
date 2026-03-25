@@ -1,0 +1,41 @@
+# Binaries
+watchup-agent
+watchup-agent.exe
+watchup-agent-*
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test binaries
+*.test
+*.out
+
+# Config files with secrets
+config.yaml
+my-config.yaml
+*.local.yaml
+test-config.yaml
+
+# Go build artifacts
+go.work
+go.work.sum
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Logs
+*.log
+
+# Temporary files
+tmp/
+temp/
