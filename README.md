@@ -118,24 +118,47 @@ EOF
 
 #### Step 6: Start and Register
 
+**Important**: Run the agent manually first to complete registration (systemd services can't accept input).
+
 ```bash
-# Reload systemd
-sudo systemctl daemon-reload
+# Stop the service if it's trying to start
+sudo systemctl stop watchup-agent
 
-# Enable auto-start on boot
-sudo systemctl enable watchup-agent
+# Run manually for registration
+sudo /usr/local/bin/watchup-agent
+```
 
-# Start the agent
+You'll be prompted for:
+```
+Enter your Project ID: proj_12345
+Enter your Master API Key: ma_abcdef123
+Enter Server Identifier (press Enter for auto-generated): my-server
+```
+
+After successful registration, you'll see:
+```
+✓ Registration successful!
+Server Key: srv_89sd0a
+Configuration saved. Agent is ready to start monitoring.
+```
+
+Press `Ctrl+C` to stop the manual run, then start the service:
+
+```bash
+# Now start as a service
 sudo systemctl start watchup-agent
 
-# View logs and complete registration
+# Check status
+sudo systemctl status watchup-agent
+
+# View logs
 sudo journalctl -u watchup-agent -f
 ```
 
-When prompted, enter:
-- **Project ID**: From your Watchup dashboard
-- **Master API Key**: From your Watchup project settings  
-- **Server Identifier**: A name for your server (e.g., "production-api")
+**Where to get credentials:**
+- **Project ID**: Watchup dashboard → Project Settings
+- **Master API Key**: Watchup dashboard → API Keys
+- **Server Identifier**: Any friendly name (e.g., "production-api", "staging-db")
 
 ---
 
@@ -193,6 +216,19 @@ EOF
 
 sudo systemctl daemon-reload
 sudo systemctl enable watchup-agent
+```
+
+**Register the agent** (run manually first):
+
+```bash
+# Run manually for interactive registration
+sudo /usr/local/bin/watchup-agent
+```
+
+Enter your credentials when prompted, then press `Ctrl+C` after successful registration.
+
+```bash
+# Now start as a service
 sudo systemctl start watchup-agent
 sudo journalctl -u watchup-agent -f
 ```
@@ -280,14 +316,71 @@ Starting monitoring loop...
 
 ## Registration Process
 
-On first run, the agent will prompt for registration
+**Important**: The agent must be run manually first for interactive registration.
 
-The agent requires registration on first run:
+**📖 See [Registration Guide](docs/REGISTRATION_GUIDE.md) for detailed instructions.**
+
+### Quick Registration Steps
+
+### Step 1: Stop the Service (if running)
+
+```bash
+sudo systemctl stop watchup-agent
+```
+
+### Step 2: Run Manually for Registration
+
+```bash
+sudo /usr/local/bin/watchup-agent
+```
+
+### Step 3: Enter Credentials
+
+You'll be prompted:
 
 ```
+Watchup Server Agent started
+
+⚠️  Agent is not registered.
+
+=== Watchup Agent Registration ===
+This agent needs to be registered with your Watchup project.
+Note: Free projects can only have ONE agent installed.
+
 Enter your Project ID: proj_12345
 Enter your Master API Key: ma_abcdef123
 Enter Server Identifier (press Enter for auto-generated): my-server
+
+Registering agent with Watchup...
+Project ID: proj_12345
+Server: my-server
+
+✓ Registration successful!
+Server Key: srv_89sd0a
+Configuration saved. Agent is ready to start monitoring.
+
+✓ Agent registered successfully
+Project ID: proj_12345
+Server: my-server
+Sampling interval: 5s
+Alert Thresholds - CPU: 80%, RAM: 75%
+
+Starting monitoring loop...
+```
+
+### Step 4: Stop Manual Run and Start Service
+
+Press `Ctrl+C` to stop the manual run, then:
+
+```bash
+# Start as a service
+sudo systemctl start watchup-agent
+
+# Verify it's running
+sudo systemctl status watchup-agent
+
+# View logs
+sudo journalctl -u watchup-agent -f
 ```
 
 **Where to get credentials:**
