@@ -52,7 +52,15 @@ func (c *APIClient) SendAlert(alert alerts.AlertPayload) error {
 func (c *APIClient) FetchConfig() (*config.Config, error) {
 	url := fmt.Sprintf("%s/agent/config?server_key=%s", c.baseURL, c.serverKey)
 	
-	resp, err := c.httpClient.Get(url)
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+	
+	// Add Authorization header
+	req.Header.Set("Authorization", "Bearer "+c.serverKey)
+	
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch config: %w", err)
 	}
