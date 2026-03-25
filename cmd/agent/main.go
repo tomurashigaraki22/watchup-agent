@@ -19,7 +19,20 @@ import (
 const defaultConfigPath = "/etc/watchup/config.yaml"
 
 func main() {
-	fmt.Println("Watchup Server Agent started")
+	fmt.Println("Watchup Server Agent starting...")
+
+	// Acquire instance lock to prevent multiple instances
+	lockFile := internal.NewLockFile("")
+	if err := lockFile.TryLock(); err != nil {
+		fmt.Printf("\n❌ %v\n", err)
+		fmt.Println("\nOnly one instance of watchup-agent can run at a time.")
+		fmt.Println("If you believe this is an error, check for stale processes:")
+		fmt.Println("  ps aux | grep watchup-agent")
+		os.Exit(1)
+	}
+	defer lockFile.Release()
+
+	fmt.Printf("✓ Instance lock acquired (PID: %d)\n", os.Getpid())
 
 	// Load configuration
 	configPath := defaultConfigPath
@@ -49,9 +62,24 @@ func main() {
 	fmt.Printf("\n✓ Agent registered successfully\n")
 	fmt.Printf("Project ID: %s\n", cfg.ProjectID)
 	fmt.Printf("Server: %s\n", cfg.ServerIdentifier)
-	fmt.Printf("Sampling interval: %ds\n", cfg.SamplingInterval)
-	fmt.Printf("Alert Thresholds - CPU: %d%%, RAM: %d%%\n\n", 
-		cfg.Alerts.CPU.Threshold, cfg.Alerts.RAM.Threshold)
+	fmt.Printf("API Endpoint: %s\n", cfg.APIEndpoint)
+	fmt.Printf("\n--- Monitoring Configuration ---\n")
+	fmt.Printf("Sampling interval: %ds (metrics collected every %d seconds)\n", 
+		cfg.SamplingInterval, cfg.SamplingInterval)
+	fmt.Printf("Config reload: every 60s\n")
+	fmt.Printf("\n--- Alert Thresholds ---\n")
+	fmt.Printf("CPU: %d%% sustained for %ds (%d samples)\n", 
+		cfg.Alerts.CPU.Threshold, 
+		cfg.Alerts.CPU.Duration,
+		cfg.Alerts.CPU.Duration/cfg.SamplingInterval)
+	fmt.Printf("RAM: %d%% sustained for %ds (%d samples)\n", 
+		cfg.Alerts.RAM.Threshold,
+		cfg.Alerts.RAM.Duration,
+		cfg.Alerts.RAM.Duration/cfg.SamplingInterval)
+	fmt.Printf("Process CPU: %d%% sustained for %ds (%d samples)\n\n",
+		cfg.Alerts.ProcessCPU.Threshold,
+		cfg.Alerts.ProcessCPU.Duration,
+		cfg.Alerts.ProcessCPU.Duration/cfg.SamplingInterval)
 
 	// Initialize collectors
 	cpuCollector := collectors.NewCPUCollector()
@@ -90,7 +118,8 @@ func main() {
 
 	go func() {
 		<-sigChan
-		fmt.Println("\nShutdown signal received")
+		fmt.Println("\nShutdown signal received, cleaning up...")
+		lockFile.Release()
 		cancel()
 	}()
 
@@ -124,7 +153,7 @@ func main() {
 
 		// Log status every 12 ticks (60 seconds at 5s interval)
 		if tickCount%12 == 0 {
-			fmt.Printf("[%s] CPU: %.1f%%, RAM: %.1f%% | %s\n",
+			fmt.Printf("[MONITOR] [%s] CPU: %.1f%%, RAM: %.1f%% | %s\n",
 				time.Now().Format("15:04:05"),
 				cpuMetrics.UsagePercent,
 				memMetrics.UsedPercent,
@@ -142,16 +171,16 @@ func main() {
 
 	// Config reload function
 	configReload := func() error {
-		fmt.Println("Checking for configuration updates...")
+		fmt.Printf("[CONFIG] Checking for configuration updates...\n")
 		newCfg, err := apiClient.FetchConfig()
 		if err != nil {
-			fmt.Printf("Failed to fetch config: %v\n", err)
+			fmt.Printf("[CONFIG] Failed to fetch config: %v\n", err)
 			return nil // Don't fail on config fetch errors
 		}
 
 		// Update configuration (simplified - in production, would need proper synchronization)
 		*cfg = *newCfg
-		fmt.Println("Configuration updated from API")
+		fmt.Printf("[CONFIG] Configuration updated from API\n")
 		return nil
 	}
 
@@ -160,7 +189,7 @@ func main() {
 	scheduler.SetConfigReloadHandler(configReload)
 
 	// Start monitoring loop
-	fmt.Println("Starting monitoring loop...")
+	fmt.Printf("Starting monitoring loop (interval: %v)...\n", cfg.GetSamplingDuration())
 	if err := scheduler.Start(ctx); err != nil && err != context.Canceled {
 		fmt.Printf("Scheduler error: %v\n", err)
 		os.Exit(1)

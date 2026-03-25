@@ -45,7 +45,9 @@ watchup-agent
 │   └── config.go               # Configuration management
 │
 ├── internal/
-│   └── scheduler.go            # Monitoring loop scheduler
+│   ├── scheduler.go            # Monitoring loop scheduler
+│   ├── registration.go         # Agent registration logic
+│   └── lockfile.go             # Instance lock management
 │
 └── install/
     └── install.sh              # Installation script
@@ -56,10 +58,12 @@ watchup-agent
 ### 1. Main Entry Point (`cmd/main.go`)
 
 Responsibilities:
+- Acquire instance lock to prevent multiple instances
 - Load configuration from `/etc/watchup/config.yaml`
 - Initialize collectors, detectors, and alert manager
 - Start the monitoring scheduler
 - Coordinate the monitoring loop
+- Release lock on graceful shutdown
 
 ### 2. Collectors (`collectors/`)
 
@@ -181,6 +185,31 @@ Monitoring loop (every 5 seconds):
 5. Transmit metrics to API
 6. Check for configuration updates (every 60 seconds)
 
+### 8. Lock File Manager (`internal/lockfile.go`)
+
+Ensures only one agent instance runs per server:
+
+**Lock File Location:**
+- Primary: `/var/run/watchup-agent.pid`
+- Fallback: `/tmp/watchup-agent.pid` (if no write permission)
+
+**Lock Acquisition Process:**
+1. Check if lock file exists
+2. If exists, read PID and verify process is running
+3. If process running, exit with error
+4. If process dead (stale lock), clean up and continue
+5. Write current PID to lock file
+
+**Lock Release:**
+- Automatic on graceful shutdown (SIGTERM, SIGINT)
+- Cleaned up by next instance if process crashes
+
+**Benefits:**
+- Prevents duplicate metric reporting
+- Avoids resource waste from multiple instances
+- Ensures consistent server identification
+- Clear error messages for troubleshooting
+
 ## Data Flow
 
 ```
@@ -244,6 +273,7 @@ WantedBy=multi-user.target
 
 ## Security Model
 
+- **Single Instance Enforcement**: PID file locking prevents multiple instances
 - **Read-Only Operations**: No system modifications or process termination
 - **Minimal Permissions**: Runs with standard user privileges
 - **Encrypted Communication**: All API calls via HTTPS
