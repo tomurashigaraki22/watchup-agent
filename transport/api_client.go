@@ -19,15 +19,36 @@ type MetricsPayload struct {
 }
 
 type APIConfigResponse struct {
-	Config struct {
-		AgentID          string  `json:"agent_id"`
-		SamplingInterval int     `json:"sampling_interval"`
-		ThresholdCPU     int     `json:"threshold_cpu"`
-		ThresholdRAM     int     `json:"threshold_ram"`
-		ThresholdProcess int     `json:"threshold_process"`
-		DurationCPU      int     `json:"duration_cpu"`
-		DurationRAM      int     `json:"duration_ram"`
-		DurationProcess  int     `json:"duration_process"`
+	Success   bool   `json:"success"`
+	UpdatedAt string `json:"updated_at"`
+	Config    struct {
+		ServerKey        string `json:"server_key"`
+		ProjectID        string `json:"project_id"`
+		ServerIdentifier string `json:"server_identifier"`
+		SamplingInterval int    `json:"sampling_interval"`
+		APIEndpoint      string `json:"api_endpoint"`
+		Alerts           struct {
+			CPU struct {
+				Threshold int  `json:"threshold"`
+				Duration  int  `json:"duration"`
+				Enabled   bool `json:"enabled"`
+			} `json:"cpu"`
+			RAM struct {
+				Threshold int  `json:"threshold"`
+				Duration  int  `json:"duration"`
+				Enabled   bool `json:"enabled"`
+			} `json:"ram"`
+			ProcessCPU struct {
+				Threshold int  `json:"threshold"`
+				Duration  int  `json:"duration"`
+				Enabled   bool `json:"enabled"`
+			} `json:"process_cpu"`
+		} `json:"alerts"`
+		Features struct {
+			DiskMonitoring    bool `json:"disk_monitoring"`
+			NetworkMonitoring bool `json:"network_monitoring"`
+			CustomMetrics     bool `json:"custom_metrics"`
+		} `json:"features"`
 	} `json:"config"`
 }
 
@@ -63,14 +84,14 @@ func (c *APIClient) SendAlert(alert alerts.AlertPayload) error {
 }
 
 func (c *APIClient) FetchConfig() (*config.Config, error) {
-	url := fmt.Sprintf("%s/agent/config?server_key=%s", c.baseURL, c.serverKey)
+	url := fmt.Sprintf("%s/agent/config", c.baseURL)
 	
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)
 	}
 	
-	// Add Authorization header
+	// Add Authorization header with Bearer token
 	req.Header.Set("Authorization", "Bearer "+c.serverKey)
 	
 	resp, err := c.httpClient.Do(req)
@@ -88,21 +109,30 @@ func (c *APIClient) FetchConfig() (*config.Config, error) {
 		return nil, fmt.Errorf("failed to decode config: %w", err)
 	}
 
+	if !apiResp.Success {
+		return nil, fmt.Errorf("API returned success=false")
+	}
+
 	// Convert API response to agent config format
 	cfg := &config.Config{
+		ServerKey:        apiResp.Config.ServerKey,
+		ProjectID:        apiResp.Config.ProjectID,
+		ServerIdentifier: apiResp.Config.ServerIdentifier,
 		SamplingInterval: apiResp.Config.SamplingInterval,
+		APIEndpoint:      apiResp.Config.APIEndpoint,
+		Registered:       true,
 		Alerts: config.AlertsConfig{
 			CPU: config.AlertConfig{
-				Threshold: apiResp.Config.ThresholdCPU,
-				Duration:  apiResp.Config.DurationCPU,
+				Threshold: apiResp.Config.Alerts.CPU.Threshold,
+				Duration:  apiResp.Config.Alerts.CPU.Duration,
 			},
 			RAM: config.AlertConfig{
-				Threshold: apiResp.Config.ThresholdRAM,
-				Duration:  apiResp.Config.DurationRAM,
+				Threshold: apiResp.Config.Alerts.RAM.Threshold,
+				Duration:  apiResp.Config.Alerts.RAM.Duration,
 			},
 			ProcessCPU: config.AlertConfig{
-				Threshold: apiResp.Config.ThresholdProcess,
-				Duration:  apiResp.Config.DurationProcess,
+				Threshold: apiResp.Config.Alerts.ProcessCPU.Threshold,
+				Duration:  apiResp.Config.Alerts.ProcessCPU.Duration,
 			},
 		},
 	}

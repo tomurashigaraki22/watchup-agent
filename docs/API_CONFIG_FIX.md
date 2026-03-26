@@ -2,25 +2,52 @@
 
 ## Problem
 
-The API was returning configuration in a different format than the agent expected, causing:
+The API client wasn't using the correct endpoint and response format, causing:
 1. Wrong sample counts in logs
 2. Thresholds not updating properly
 3. Durations being misinterpreted
+
+## Correct API Endpoint
+
+**Endpoint:** `GET /agent/config`  
+**Authentication:** Bearer token in Authorization header  
+**Header:** `Authorization: Bearer {server_key}`
 
 ## API Response Format
 
 The API returns:
 ```json
 {
+  "success": true,
+  "updated_at": "2026-03-25T23:38:50",
   "config": {
-    "agent_id": "69b0da1c-14d2-431d-b68f-6016340ba61f",
+    "server_key": "srv_xxx",
+    "project_id": "proj_xxx",
+    "server_identifier": "my-server",
     "sampling_interval": 5,
-    "threshold_cpu": 80,
-    "threshold_ram": 38,
-    "threshold_process": 60,
-    "duration_cpu": 10,      // seconds
-    "duration_ram": 5,       // seconds
-    "duration_process": 10   // seconds
+    "api_endpoint": "https://watchup.space",
+    "alerts": {
+      "cpu": {
+        "threshold": 80,
+        "duration": 300,
+        "enabled": true
+      },
+      "ram": {
+        "threshold": 75,
+        "duration": 600,
+        "enabled": true
+      },
+      "process_cpu": {
+        "threshold": 60,
+        "duration": 120,
+        "enabled": true
+      }
+    },
+    "features": {
+      "disk_monitoring": false,
+      "network_monitoring": false,
+      "custom_metrics": false
+    }
   }
 }
 ```
@@ -29,37 +56,54 @@ The API returns:
 
 The agent uses:
 ```yaml
+server_key: "srv_xxx"
+project_id: "proj_xxx"
+server_identifier: "my-server"
 sampling_interval: 5
+api_endpoint: "https://watchup.space"
+registered: true
+
 alerts:
   cpu:
     threshold: 80
-    duration: 10    # seconds
+    duration: 300    # seconds
   ram:
-    threshold: 38
-    duration: 5     # seconds
+    threshold: 75
+    duration: 600    # seconds
   process_cpu:
     threshold: 60
-    duration: 10    # seconds
+    duration: 120    # seconds
 ```
 
 ## Solution
 
-### 1. API Response Struct
-Created `APIConfigResponse` struct to properly decode the API's nested JSON format.
+### 1. Correct API Endpoint
+Changed from:
+- ❌ `GET /agent/config?server_key={key}` (query parameter)
+- ✅ `GET /agent/config` with `Authorization: Bearer {key}` header
 
-### 2. Format Conversion
+### 2. API Response Struct
+Created `APIConfigResponse` struct matching the actual API response:
+- Includes `success` field
+- Includes `updated_at` timestamp
+- Properly nested `config` object with `alerts` structure
+- Includes `features` for future extensibility
+
+### 3. Format Conversion
 The `FetchConfig()` method now:
-- Decodes the API response correctly
-- Converts to agent's internal config format
-- Maps all fields properly
+- Uses correct endpoint without query parameters
+- Sends Bearer token in Authorization header
+- Decodes the full API response correctly
+- Validates `success` field
+- Maps all fields properly to agent config
 
-### 3. Dynamic Threshold Updates
+### 4. Dynamic Threshold Updates
 Added `UpdateThresholds()` method to `SpikeDetector`:
 - Updates thresholds without restarting
 - Recalculates required sample counts
 - Resets violation counters to prevent false alerts
 
-### 4. Config Reload Improvements
+### 5. Config Reload Improvements
 The config reload now:
 - Preserves local `sampling_interval` (uses local config.yaml value)
 - Updates only alert thresholds from API
@@ -68,17 +112,17 @@ The config reload now:
 
 ## Sample Count Calculation
 
-With the API config example:
-- CPU: 80% for 10s at 5s interval = **2 samples** needed
-- RAM: 38% for 5s at 5s interval = **1 sample** needed
-- Process: 60% for 10s at 5s interval = **2 samples** needed
+With typical API config:
+- CPU: 80% for 300s at 5s interval = **60 samples** needed
+- RAM: 75% for 600s at 5s interval = **120 samples** needed
+- Process: 60% for 120s at 5s interval = **24 samples** needed
 
-Logs will now show:
+Logs will show:
 ```
 [CONFIG] Alert thresholds updated:
-  CPU: 80% for 10s (2 samples)
-  RAM: 38% for 5s (1 sample)
-  Process: 60% for 10s (2 samples)
+  CPU: 80% for 300s (60 samples)
+  RAM: 75% for 600s (120 samples)
+  Process: 60% for 120s (24 samples)
 ```
 
 ## Expected Behavior
@@ -87,20 +131,20 @@ Logs will now show:
 ```
 [CONFIG] Checking for configuration updates...
 [CONFIG] Alert thresholds updated:
-  CPU: 80% for 10s (2 samples)
-  RAM: 38% for 5s (1 sample)
-  Process: 60% for 10s (2 samples)
+  CPU: 80% for 300s (60 samples)
+  RAM: 75% for 600s (120 samples)
+  Process: 60% for 120s (24 samples)
 [CONFIG] Resource check: CPU: 2.1%, RAM: 34.0%
 ```
 
 ### In Monitoring Logs
 ```
-[MONITOR] [23:42:35] CPU: 2.0%, RAM: 34.2% | CPU: 2.0% (0/2 samples), RAM: 34.2% (0/1 samples), Process: 4.1% (0/2 samples)
+[MONITOR] [23:42:35] CPU: 2.0%, RAM: 34.2% | CPU: 2.0% (0/60 samples), RAM: 34.2% (0/120 samples), Process: 4.1% (0/24 samples)
 ```
 
 The sample counts now correctly reflect the API's duration settings.
 
 ## Files Changed
-- `transport/api_client.go` - Added APIConfigResponse struct and proper decoding
+- `transport/api_client.go` - Updated endpoint, added proper APIConfigResponse struct, fixed authentication
 - `detectors/spike_detector.go` - Added UpdateThresholds() method
 - `cmd/agent/main.go` - Updated config reload to use UpdateThresholds()
