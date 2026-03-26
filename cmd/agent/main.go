@@ -125,8 +125,17 @@ func main() {
 
 	// Monitoring tick function
 	tickCount := 0
+	lastTickTime := time.Now()
 	monitoringTick := func() error {
 		tickCount++
+		now := time.Now()
+		elapsed := now.Sub(lastTickTime)
+		lastTickTime = now
+
+		// Debug: Log actual tick interval
+		if tickCount > 1 {
+			fmt.Printf("[DEBUG] Tick #%d - Elapsed since last tick: %v\n", tickCount, elapsed)
+		}
 
 		// Collect CPU metrics
 		cpuMetrics, err := cpuCollector.Collect()
@@ -151,9 +160,10 @@ func main() {
 		spikeDetector.CheckRAM(memMetrics.UsedPercent, topProcesses)
 		spikeDetector.CheckProcessCPU(topProcesses)
 
-		// Log status every 12 ticks (60 seconds at 5s interval)
-		if tickCount%12 == 0 {
-			fmt.Printf("[MONITOR] [%s] CPU: %.1f%%, RAM: %.1f%% | %s\n",
+		// Log every tick for first minute, then every 12 ticks
+		if tickCount <= 12 || tickCount%12 == 0 {
+			fmt.Printf("[MONITOR] Tick #%d [%s] CPU: %.1f%%, RAM: %.1f%% | %s\n",
+				tickCount,
 				time.Now().Format("15:04:05"),
 				cpuMetrics.UsagePercent,
 				memMetrics.UsedPercent,
